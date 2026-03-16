@@ -73,6 +73,13 @@ select option{background:var(--surface2)}
     <h2 style="font-size:19px;font-weight:700">病史檔案</h2>
     <button onclick="saveProfile()" style="background:var(--accent);color:#fff;font-size:14px;padding:8px 14px;border-radius:8px">儲存</button>
   </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <button onclick="exportProfile()" style="background:var(--surface2);color:var(--text);font-size:14px;padding:12px;border-radius:10px;border:1px solid var(--border)">⬇ 匯出備份</button>
+    <label style="background:var(--surface2);color:var(--text);font-size:14px;padding:12px;border-radius:10px;border:1px solid var(--border);text-align:center;cursor:pointer">
+      ⬆ 匯入備份
+      <input type="file" accept=".json" onchange="importProfile(event)" style="display:none"/>
+    </label>
+  </div>
 
   <div style="background:rgba(191,90,242,0.08);border:1px solid rgba(191,90,242,0.25);border-radius:12px;padding:14px 16px;font-size:14px;color:var(--muted);line-height:1.7">
     這份資料會提供給 AI 分析，用來在溝通開始前建議優先問題順序。<br>
@@ -152,9 +159,9 @@ select option{background:var(--surface2)}
   </div>
 
   <div id="breadcrumb" style="display:flex;gap:6px;flex-wrap:wrap;min-height:16px"></div>
-  <div id="q-card" style="background:var(--surface);border:2px solid var(--border);border-radius:16px;padding:26px 20px;flex:1;display:flex;flex-direction:column;justify-content:center;gap:8px">
-    <div id="q-text" style="font-size:26px;font-weight:700;line-height:1.3"></div>
-    <div id="q-hint" style="font-size:15px;color:var(--muted)"></div>
+  <div id="q-card" style="background:var(--surface);border:2px solid var(--border);border-radius:16px;padding:20px;min-height:140px;max-height:210px;display:flex;flex-direction:column;justify-content:center;gap:10px">
+    <div id="q-text" style="font-size:38px;font-weight:700;line-height:1.2"></div>
+    <div id="q-hint" style="font-size:17px;color:var(--muted)"></div>
   </div>
   <div id="q-buttons"></div>
   <button onclick="showScreen('manual')" style="background:transparent;color:var(--muted);font-size:14px;padding:10px;border:1px solid var(--border);border-radius:10px">切換到手動清單</button>
@@ -773,6 +780,43 @@ async function generateCustomTree(){
   btn.disabled=false
 }
 
+
+function exportProfile(){
+  const data={
+    profile: loadProfile(),
+    treatments: loadTreatments(),
+    family: loadFamily(),
+    customTree: loadCustomTree(),
+    exported_at: new Date().toISOString()
+  }
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'})
+  const a=document.createElement('a')
+  const name=loadProfile().name||'patient'
+  a.href=URL.createObjectURL(blob)
+  a.download=`intent-decoder-profile-${name}-${new Date().toISOString().slice(0,10)}.json`
+  a.click()
+}
+
+function importProfile(event){
+  const file=event.target.files[0]
+  if(!file) return
+  const reader=new FileReader()
+  reader.onload=function(e){
+    try{
+      const data=JSON.parse(e.target.result)
+      if(data.profile)   saveProfileData(data.profile)
+      if(data.treatments) saveTreatments(data.treatments)
+      if(data.family)    saveFamily(data.family)
+      if(data.customTree) saveCustomTree(data.customTree)
+      renderProfile()
+      alert('✓ 匯入成功！病史資料已還原。')
+    }catch(err){
+      alert('匯入失敗：檔案格式不正確（'+err.message+'）')
+    }
+  }
+  reader.readAsText(file)
+}
+
 function renderProfile(){
   const p=loadProfile()
   document.getElementById('p-name').value=p.name||''
@@ -978,8 +1022,8 @@ function renderQuestion(){
   const btns=document.getElementById('q-buttons')
   if(node.type==='yes_no'){
     btns.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-      <button onclick="answer('yes')" style="background:var(--green);color:#000;font-size:30px;padding:26px 0;border-radius:16px">✓ 是</button>
-      <button onclick="answer('no')" style="background:var(--surface2);color:var(--text);font-size:30px;padding:26px 0;border-radius:16px;border:2px solid var(--border)">✗ 不是</button>
+      <button onclick="answer('yes')" style="background:var(--green);color:#000;font-size:32px;padding:28px 0;border-radius:16px">✓ 是</button>
+      <button onclick="answer('no')" style="background:var(--surface2);color:var(--text);font-size:32px;padding:28px 0;border-radius:16px;border:2px solid var(--border)">✗ 不是</button>
     </div>`
   } else {
     btns.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px">`+
