@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>意圖解碼器 v3</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f0f0f;--surface:#1c1c1e;--surface2:#2c2c2e;--border:#3a3a3c;
+  --text:#f2f2f7;--muted:#8e8e93;--accent:#0a84ff;
+  --green:#30d158;--red:#ff453a;--orange:#ff9f0a;--emergency:#ff3b30;
+  --purple:#bf5af2;--teal:#32ade6;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,"Helvetica Neue","PingFang TC","Microsoft JhengHei",sans-serif;font-size:18px;line-height:1.5;min-height:100vh}
+button{cursor:pointer;border:none;border-radius:12px;font-family:inherit;font-weight:600;transition:opacity .1s,transform .08s}
+button:active{transform:scale(0.96);opacity:0.8}
+.screen{min-height:100vh;display:flex;flex-direction:column;padding:20px 18px;max-width:600px;margin:0 auto;gap:14px}
+.hidden{display:none!important}
+input[type=text],input[type=date],textarea,select{background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:16px;padding:11px 14px;width:100%;outline:none}
+input[type=text]:focus,textarea:focus,select:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:72px}
+select option{background:var(--surface2)}
+.tag{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;font-size:13px;padding:4px 10px;color:var(--text)}
+.tag button{background:transparent;color:var(--muted);font-size:14px;padding:0;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-weight:400}
+.ai-badge{background:rgba(191,90,242,0.15);border:1px solid rgba(191,90,242,0.4);border-radius:6px;font-size:12px;padding:2px 8px;color:var(--purple)}
+.section-label{font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+</style>
+</head>
+<body>
+
+<!-- ═══ HOME ═══ -->
+<div id="home" class="screen">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end">
+    <div>
+      <div style="font-size:12px;color:var(--muted)">溝通輔助系統 v7</div>
+      <h1 style="font-size:26px;font-weight:800">意圖解碼器</h1>
+    </div>
+    <div id="home-patient-name" style="font-size:14px;color:var(--muted);padding-bottom:4px"></div>
+  </div>
+
+  <!-- LLM suggestion banner -->
+  <div id="llm-banner" class="hidden" style="background:rgba(191,90,242,0.1);border:1px solid rgba(191,90,242,0.35);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span class="ai-badge">AI 建議</span>
+      <button onclick="dismissBanner()" style="background:transparent;color:var(--muted);font-size:13px;padding:4px 8px;border:1px solid var(--border);border-radius:6px">略過</button>
+    </div>
+    <div id="llm-banner-text" style="font-size:15px;color:var(--text);line-height:1.6"></div>
+  </div>
+
+  <button onclick="startSession()" style="background:var(--emergency);color:#fff;font-size:20px;padding:18px;border-radius:14px;text-align:left">
+    🚨 緊急狀況 — 立刻開始
+  </button>
+  <button onclick="startSession()" style="background:var(--accent);color:#fff;font-size:22px;padding:22px;border-radius:14px">
+    ▶ 開始溝通流程
+  </button>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <button onclick="showScreen('manual')" style="background:var(--surface2);color:var(--text);font-size:17px;padding:16px 10px;border-radius:14px">📋 手動清單</button>
+    <button onclick="showScreen('profile')" style="background:var(--surface2);color:var(--text);font-size:17px;padding:16px 10px;border-radius:14px">🏥 病史檔案</button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <button onclick="showScreen('settings')" style="background:var(--surface2);color:var(--text);font-size:17px;padding:16px 10px;border-radius:14px">👥 家人設定</button>
+    <button onclick="showScreen('history')" style="background:var(--surface2);color:var(--text);font-size:17px;padding:16px 10px;border-radius:14px">🕐 歷史紀錄</button>
+  </div>
+  <button onclick="showScreen('feedback')" style="background:var(--surface2);color:var(--text);font-size:17px;padding:14px;border-radius:14px;border:1.5px solid rgba(10,132,255,0.3)">💬 回報與建議</button>
+  <div id="home-recent"></div>
+</div>
+
+<!-- ═══ PROFILE ═══ -->
+<div id="profile" class="screen hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <button onclick="showScreen('home')" style="background:var(--surface2);color:var(--muted);font-size:14px;padding:8px 14px;border-radius:8px">← 回首頁</button>
+    <h2 style="font-size:19px;font-weight:700">病史檔案</h2>
+    <button onclick="saveProfile()" style="background:var(--accent);color:#fff;font-size:14px;padding:8px 14px;border-radius:8px">儲存</button>
+  </div>
+
+  <div style="background:rgba(191,90,242,0.08);border:1px solid rgba(191,90,242,0.25);border-radius:12px;padding:14px 16px;font-size:14px;color:var(--muted);line-height:1.7">
+    這份資料會提供給 AI 分析，用來在溝通開始前建議優先問題順序。<br>
+    <span style="color:var(--purple)">AI 只會調整建議，不會改變確認流程或緊急邏輯。</span>
+  </div>
+
+  <!-- Basic info -->
+  <div class="section-label">基本資訊</div>
+  <input type="text" id="p-name" placeholder="患者姓名或稱謂（例：爸爸）"/>
+  <input type="text" id="p-diagnosis" placeholder="主要診斷（例：腦中風後遺症）"/>
+  <input type="date" id="p-dob"/>
+  <div style="font-size:13px;color:var(--muted);margin-top:-8px">出生日期（選填）</div>
+
+  <!-- Medications -->
+  <div class="section-label" style="margin-top:4px">目前用藥</div>
+  <div id="med-tags" style="display:flex;flex-wrap:wrap;gap:8px;min-height:20px"></div>
+  <div style="display:flex;gap:8px">
+    <input type="text" id="med-input" placeholder="藥名（例：阿斯匹靈）" style="flex:1" onkeydown="if(event.key==='Enter')addTag('med')"/>
+    <button onclick="addTag('med')" style="background:var(--surface2);color:var(--text);font-size:14px;padding:10px 16px;border:1px solid var(--border)">＋</button>
+  </div>
+
+  <!-- Allergies -->
+  <div class="section-label" style="margin-top:4px">過敏紀錄</div>
+  <div id="allergy-tags" style="display:flex;flex-wrap:wrap;gap:8px;min-height:20px"></div>
+  <div style="display:flex;gap:8px">
+    <input type="text" id="allergy-input" placeholder="過敏原（例：盤尼西林）" style="flex:1" onkeydown="if(event.key==='Enter')addTag('allergy')"/>
+    <button onclick="addTag('allergy')" style="background:var(--surface2);color:var(--text);font-size:14px;padding:10px 16px;border:1px solid var(--border)">＋</button>
+  </div>
+
+  <!-- Upcoming procedures -->
+  <div class="section-label" style="margin-top:4px">近期療程/手術安排</div>
+  <textarea id="p-procedures" placeholder="例：3/20 換藥、4/5 膝關節手術、每週二復健"></textarea>
+
+  <!-- Preferred staff -->
+  <div class="section-label" style="margin-top:4px">偏好醫護人員</div>
+  <div id="staff-tags" style="display:flex;flex-wrap:wrap;gap:8px;min-height:20px"></div>
+  <div style="display:flex;gap:8px">
+    <input type="text" id="staff-input" placeholder="姓名或稱謂（例：王護理師）" style="flex:1" onkeydown="if(event.key==='Enter')addTag('staff')"/>
+    <button onclick="addTag('staff')" style="background:var(--surface2);color:var(--text);font-size:14px;padding:10px 16px;border:1px solid var(--border)">＋</button>
+  </div>
+
+  <!-- Treatment list -->
+  <div class="section-label" style="margin-top:4px">個人療程清單</div>
+  <div style="background:rgba(191,90,242,0.06);border:1px solid rgba(191,90,242,0.2);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:4px">
+    填入後按「更新客製決策樹」，AI 會把這些具體名稱嵌入療程分支，問題會變成「是不想喝中藥嗎？」。
+  </div>
+  <div id="treatment-list-items" style="display:flex;flex-direction:column;gap:10px"></div>
+  <button onclick="addTreatmentItem()" style="background:var(--surface2);color:var(--text);font-size:15px;padding:12px;border-radius:10px;border:1.5px dashed var(--border);width:100%">＋ 新增療程或藥物</button>
+  <button onclick="generateCustomTree()" id="tree-gen-btn" style="background:rgba(191,90,242,0.2);color:var(--purple);font-size:16px;padding:16px;border-radius:14px;border:1.5px solid rgba(191,90,242,0.4);width:100%">⚙ 更新客製決策樹</button>
+  <div id="tree-gen-result" class="hidden" style="background:rgba(191,90,242,0.06);border:1px solid rgba(191,90,242,0.3);border-radius:12px;padding:14px;font-size:14px;color:var(--text);line-height:1.7"></div>
+
+  <!-- Notes -->
+  <div class="section-label" style="margin-top:4px">其他備註</div>
+  <textarea id="p-notes" placeholder="輔助者補充的照護注意事項、溝通習慣等"></textarea>
+
+  <!-- AI analyse button -->
+  <button onclick="runLLMAnalysis()" id="llm-btn" style="background:rgba(191,90,242,0.2);color:var(--purple);font-size:17px;padding:18px;border-radius:14px;border:1.5px solid rgba(191,90,242,0.4);width:100%">
+    ✦ 請 AI 分析並給出建議
+  </button>
+  <div id="llm-result" class="hidden" style="background:rgba(191,90,242,0.08);border:1px solid rgba(191,90,242,0.3);border-radius:14px;padding:16px;font-size:15px;line-height:1.8;color:var(--text)"></div>
+
+  <div style="height:20px"></div>
+</div>
+
+<!-- ═══ SESSION ═══ -->
+<div id="session" class="screen hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <button onclick="showScreen('home')" style="background:var(--surface2);color:var(--muted);font-size:14px;padding:8px 14px">← 回首頁</button>
+    <span id="q-counter" style="font-size:13px;color:var(--muted)">第 1 題</span>
+    <button onclick="restartSession()" style="background:var(--surface2);color:var(--muted);font-size:14px;padding:8px 14px">重來</button>
+  </div>
+
+  <!-- AI priority hint -->
+  <div id="ai-hint" class="hidden" style="background:rgba(191,90,242,0.08);border:1px solid rgba(191,90,242,0.25);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--purple);display:flex;align-items:center;gap:8px">
+    <span class="ai-badge">AI</span>
+    <span id="ai-hint-text"></span>
+  </div>
+
+  <div id="breadcrumb" style="display:flex;gap:6px;flex-wrap:wrap;min-height:16px"></div>
+  <div id="q-card" style="background:var(--surface);border:2px solid var(--border);border-radius:16px;padding:26px 20px;flex:1;display:flex;flex-direction:column;justify-content:center;gap:8px">
+    <div id="q-text" style="font-size:26px;font-weight:700;line-height:1.3"></div>
+    <div id="q-hint" style="font-size:15px;color:var(--muted)"></div>
+  </div>
+  <div id="q-buttons"></div>
+  <button onclick="showScreen('manual')" style="background:transparent;color:var(--muted);font-size:14px;padding:10px;border:1px solid var(--border);border-radius:10px">切換到手動清單</button>
+</div>
+
+<!-- ═══ CONFIRM ═══ -->
+<div id="confirm" class="screen hidden">
+  <div style="font-size:13px;color:var(--muted)" id="confirm-q-count"></div>
+  <div id="confirm-card" style="background:var(--surface);border:3px solid var(--accent);border-radius:20px;padding:32px 22px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:12px">
+    <div id="confirm-cat" style="font-size:14px;font-weight:600"></div>
+    <div id="confirm-label" style="font-size:52px;font-weight:800;line-height:1.1"></div>
+    <div id="confirm-sentence" style="font-size:18px;color:var(--muted);margin-top:4px"></div>
+  </div>
+  <button onclick="refineWithLLM()" id="refine-btn" style="background:rgba(191,90,242,0.15);color:var(--purple);font-size:18px;padding:18px;border-radius:14px;border:1.5px solid rgba(191,90,242,0.4);width:100%">✦ 更精確地描述這個需求</button>
+  <button onclick="confirmYes()" style="background:var(--green);color:#000;font-size:22px;padding:22px;border-radius:16px;width:100%">✓ 對，就是這個</button>
+  <button onclick="confirmNo()" style="background:var(--surface2);color:var(--text);font-size:20px;padding:18px;border-radius:16px;border:2px solid var(--border);width:100%">✗ 不是這個</button>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <button onclick="restartSession()" style="background:transparent;color:var(--muted);font-size:15px;padding:14px;border:1px solid var(--border);border-radius:10px">重新開始</button>
+    <button onclick="showScreen('manual')" style="background:transparent;color:var(--muted);font-size:15px;padding:14px;border:1px solid var(--border);border-radius:10px">手動清單</button>
+  </div>
+</div>
+
+<!-- ═══ DETAIL (LLM followup) ═══ -->
+<div id="detail" class="screen hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <button onclick="showScreen('confirm')" style="background:var(--surface2);color:var(--muted);font-size:14px;padding:8px 14px;border-radius:8px">← 返回</button>
+    <span class="ai-badge">AI 細化追問</span>
+    <div style="width:72px"></div>
+  </div>
+
+  <!-- Intent chip at top -->
+  <div id="detail-intent-chip" style="background:var(--surface);border:2px solid var(--accent);border-radius:14px;padding:16px 20px;text-align:center">
+    <div id="detail-intent-label" style="font-size:32px;font-weight:800"></div>
+    <div id="detail-intent-cat" style="font-size:13px;color:var(--muted);margin-top:4px"></div>
+  </div>
+
+  <!-- Loading state -->
+  <div id="detail-loading" style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:32px 0;color:var(--muted);font-size:16px">
+    <div id="detail-loading-dots" style="font-size:24px;letter-spacing:4px">・・・</div>
+    <div>AI 正在根據病史生成追問…</div>
+  </div>
+
+  <!-- Followup questions (yes/no) -->
+  <div id="detail-questions" class="hidden" style="display:flex;flex-direction:column;gap:12px"></div>
+
+  <!-- Final summary -->
+  <div id="detail-summary" class="hidden" style="background:rgba(191,90,242,0.08);border:2px solid rgba(191,90,242,0.4);border-radius:20px;padding:28px 20px;text-align:center;display:flex;flex-direction:column;gap:12px">
+    <div style="font-size:13px;color:var(--purple);font-weight:600">AI 完整描述</div>
+    <div id="detail-summary-text" style="font-size:22px;font-weight:700;line-height:1.4"></div>
+  </div>
+
+  <div id="detail-confirm-btns" class="hidden" style="display:flex;flex-direction:column;gap:10px">
+    <button onclick="detailConfirmYes()" style="background:var(--green);color:#000;font-size:22px;padding:22px;border-radius:16px;width:100%">✓ 對，就是這樣</button>
+    <button onclick="detailConfirmNo()" style="background:var(--surface2);color:var(--text);font-size:18px;padding:16px;border-radius:14px;border:2px solid var(--border);width:100%">✗ 還不對，重新描述</button>
+    <button onclick="confirmYes()" style="background:transparent;color:var(--muted);font-size:14px;padding:12px;border:1px solid var(--border);border-radius:10px">略過細節，直接確認原始意圖</button>
+  </div>
+</div>
+
+<!-- ═══ FALLBACK ═══ -->
+<div id="fallback" class="screen hidden">
+  <div style="font-size:22px;font-weight:700;color:var(--orange)">⚠ 無法定位需求</div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;color:var(--muted);font-size:17px;line-height:1.7">
+    系統無法從目前的回應推定意圖。<br>請選擇以下方式繼續：
+  </div>
+  <button onclick="restartSession()" style="background:var(--accent);color:#fff;font-size:22px;padding:22px;border-radius:16px;width:100%">↩ 重新開始</button>
+  <button onclick="showScreen('manual')" style="background:var(--surface2);color:var(--text);font-size:22px;padding:22px;border-radius:16px;border:2px solid var(--border);width:100%">📋 改用手動清單</button>
+  <button onclick="showScreen('home')" style="background:transparent;color:var(--muted);font-size:16px;padding:14px;border:1px solid var(--border);border-radius:10px;width:100%">回首頁</button>
+</div>
+
+<!-- ═══ MANUAL ═══ -->
+<div id="manual" class="screen hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <button onclick="showScreen('home')" style="background:var(--surface2);color:var(--muted);font-size:14px;padding:8px 14px;border-radius:8px">← 回首頁</button>
+    <h2 style="font-size:19px;font-weight:700">手動需求清單</h2>
+    <div style="width:72px"></div>
+  </div>
+  <div id="manual-confirm-bar" class="hidden" style="position:sticky;top:0;z-index:10;background:var(--green);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
+    <span id="manual-selected-label" style="font-size:22px;font-weight:700;color:#000"></span>
+    <button onclick="manualConfirm()" style="background:#fff;color:#000;font-size:16px;padding:10px 18px;border-radius:10px;font-weight:700">確認</button>
+  </div>
+  <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px">
+    <button onclick="filterManual('all')" id="tab-all" style="background:var(--accent);color:#fff;font-size:13px;padding:6px 12px;border-radius:20px;white-space:nowrap">全部</button>
+    <button onclick="filterManual('emergency')" id="tab-emergency" style="background:var(--surface2);color:var(--text);font-size:13px;padding:6px 12px;border-radius:20px;white-space:nowrap;border:1px solid var(--border)">🚨 緊急</button>
+    <button onclick="filterManual('body')" id="tab-body" style="background:var(--surface2);color:var(--text);font-size:13px;padding:6px 12px;border-radius:20px;white-space:nowrap;border:1px solid var(--border)">身體</button>
+    <button onclick="filterManual('env')" id="tab-env" style="background:var(--surface2);color:var(--text);font-size:13px;padding:6px 12px;border-radius:20px;white-space:nowrap;border:1px solid var(--border)">環境</button>
+    <button onclick="filterManual('treatment')" id="tab-treatment" style="background:var(--surface2);color:var(--text);font-size:13px;padding:6px 12px;border-radius:20px;white-space:nowrap;border:1px solid var(--border)">療程</button>
+    <button onclick="filterManual('medical')" id="tab-medical" style="background:var(--surface2);color:var(--text);font-size:13px;padding:6px 12px;border-radius:20px;white-space:nowrap;border:1px solid var(--border)">醫療安排</button>
+    <button onclick="filterManual('social')" id="tab-social" style="background:var(--surface2);color:var(--text);font-size:13px;padding:6px 12px;border-radius:20px;white-space:nowrap;border:1px solid var(--border)">人/事情</button>
+    <button onclick="filterManual('emotion')" id="tab-emotion" style="background:var(--surface2);color:var(--text);font-size:13px;padding:6px 12px;border-radius:20px;white-space:nowrap;border:1px solid var(--border)">情緒</button>
+  </div>
+  <div id="manual-list"></div>
+  <div style="height:24px"></div>
+</div>
+
+<!-- ═══ SETTINGS ═══ -->
+<div id="settings" class="screen hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <button onclick="showScreen('home')" style="background:var(--surface2);color:var(--muted);font-size:14px;padding:8px 14px;border-radius:8px">← 回首頁</button>
+    <h2 style="font-size:19px;font-weight:700">家人設定</h2>
+    <div style="width:72px"></div>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;font-size:14px;color:var(--muted);line-height:1.7">
+    設定後，「找指定家人」的選項會自動出現在溝通流程中。
+  </div>
+  <div id="family-list"></div>
+  <div style="display:flex;gap:10px">
+    <input type="text" id="family-name-input" placeholder="姓名或稱謂（例：媽媽）" style="flex:1"/>
+    <input type="text" id="family-role-input" placeholder="角色（選填）" style="width:100px"/>
+  </div>
+  <button onclick="addFamilyMember()" style="background:var(--accent);color:#fff;font-size:18px;padding:16px;border-radius:14px;width:100%">+ 新增家人</button>
+</div>
+
+<!-- ═══ HISTORY ═══ -->
+<div id="history" class="screen hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <button onclick="showScreen('home')" style="background:var(--surface2);color:var(--muted);font-size:14px;padding:8px 14px;border-radius:8px">← 回首頁</button>
+    <h2 style="font-size:19px;font-weight:700">歷史紀錄</h2>
+    <button onclick="clearHistory()" style="background:transparent;color:var(--red);font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px">清除</button>
+  </div>
+  <div id="history-list"></div>
+</div>
+
+<!-- ═══ FEEDBACK ═══ -->
+<div id="feedback" class="screen hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <button onclick="showScreen('home')" style="background:var(--surface2);color:var(--muted);font-size:14px;padding:8px 14px;border-radius:8px">← 回首頁</button>
+    <h2 style="font-size:19px;font-weight:700">回報與建議</h2>
+    <div style="width:72px"></div>
+  </div>
+
+  <div style="background:rgba(10,132,255,0.08);border:1px solid rgba(10,132,255,0.25);border-radius:12px;padding:14px 16px;font-size:14px;color:var(--muted);line-height:1.7">
+    回報的內容會存在本機，<span style="color:var(--accent)">下次 AI 分析時會一起納入參考</span>，也可以截圖給開發者改進系統。
+  </div>
+
+  <!-- Quick feedback type -->
+  <div class="section-label">這次回報的類型</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <button id="fb-type-missing" onclick="selectFbType('missing')" style="background:var(--surface2);color:var(--text);font-size:16px;padding:16px 10px;border-radius:12px;border:2px solid var(--border)">＋ 缺少某個需求</button>
+    <button id="fb-type-wrongcat" onclick="selectFbType('wrongcat')" style="background:var(--surface2);color:var(--text);font-size:16px;padding:16px 10px;border-radius:12px;border:2px solid var(--border)">↕ 分類位置不對</button>
+    <button id="fb-type-wronglabel" onclick="selectFbType('wronglabel')" style="background:var(--surface2);color:var(--text);font-size:16px;padding:16px 10px;border-radius:12px;border:2px solid var(--border)">✏ 措辭需要調整</button>
+    <button id="fb-type-flow" onclick="selectFbType('flow')" style="background:var(--surface2);color:var(--text);font-size:16px;padding:16px 10px;border-radius:12px;border:2px solid var(--border)">🔀 流程走錯了</button>
+    <button id="fb-type-general" onclick="selectFbType('general')" style="background:var(--surface2);color:var(--text);font-size:16px;padding:16px 10px;border-radius:12px;border:2px solid var(--border);grid-column:span 2">💬 整體使用回饋</button>
+  </div>
+
+  <!-- Dynamic form -->
+  <div id="fb-form" class="hidden" style="display:flex;flex-direction:column;gap:12px">
+    <div class="section-label" id="fb-form-label">說明</div>
+
+    <!-- Missing intent fields -->
+    <div id="fb-missing-fields" class="hidden" style="display:flex;flex-direction:column;gap:10px">
+      <input type="text" id="fb-new-intent" placeholder="新需求名稱（例：想聽廣播）"/>
+      <select id="fb-new-cat">
+        <option value="">— 建議放在哪個類別 —</option>
+        <option value="body">身體需求</option>
+        <option value="env">環境/照護</option>
+        <option value="treatment">療程意見</option>
+        <option value="medical">醫療安排</option>
+        <option value="social">人/事情</option>
+        <option value="emotion">情緒/狀態</option>
+      </select>
+    </div>
+
+    <!-- Wrong cat fields -->
+    <div id="fb-wrongcat-fields" class="hidden" style="display:flex;flex-direction:column;gap:10px">
+      <input type="text" id="fb-wrongcat-intent" placeholder="哪個需求分類不對？（例：關燈）"/>
+      <select id="fb-wrongcat-to">
+        <option value="">— 應該移到哪個類別 —</option>
+        <option value="body">身體需求</option>
+        <option value="env">環境/照護</option>
+        <option value="treatment">療程意見</option>
+        <option value="medical">醫療安排</option>
+        <option value="social">人/事情</option>
+        <option value="emotion">情緒/狀態</option>
+      </select>
+    </div>
+
+    <!-- Label / flow fields -->
+    <div id="fb-text-fields" class="hidden">
+      <textarea id="fb-text-content" placeholder="請描述問題和建議…"></textarea>
+    </div>
+
+    <!-- Related session (optional) -->
+    <div id="fb-session-ref" style="display:none">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:6px">關聯的使用紀錄（選填）</div>
+      <select id="fb-session-select" style="font-size:14px">
+        <option value="">— 不關聯特定紀錄 —</option>
+      </select>
+    </div>
+
+    <button onclick="submitFeedback()" style="background:var(--accent);color:#fff;font-size:18px;padding:18px;border-radius:14px;width:100%">送出回報</button>
+  </div>
+
+  <!-- Feedback list -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+    <div class="section-label">已提交的回報</div>
+    <button onclick="exportFeedback()" style="background:transparent;color:var(--accent);font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">匯出 JSON</button>
+  </div>
+  <div id="feedback-list"></div>
+  <div style="height:20px"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// CONFIG — 修改這裡指向你的 Cloudflare Worker URL
+// ══════════════════════════════════════════════
+const API_ENDPOINT = 'https://black-scene-b647.jaycheng1989.workers.dev/api'
+// 部署 Cloudflare Worker 後，把上面的 URL 換成你的 Worker 網址
+
+// ══════════════════════════════════════════════
+// INTENTS
+// ══════════════════════════════════════════════
+const BASE_INTENTS = [
+  {id:"severe_pain",label:"很痛",category:"emergency",emergency:true,priority:10},
+  {id:"chest",label:"胸口不舒服",category:"emergency",emergency:true,priority:10},
+  {id:"cant_breathe",label:"呼吸困難",category:"emergency",emergency:true,priority:10},
+  {id:"nausea",label:"想吐",category:"emergency",emergency:true,priority:9},
+  {id:"dizzy",label:"頭暈",category:"emergency",emergency:true,priority:9},
+  {id:"call_now",label:"立刻找醫護",category:"emergency",emergency:true,priority:10},
+  {id:"drink_water",label:"喝水",category:"body",emergency:false,priority:10},
+  {id:"toilet",label:"廁所",category:"body",emergency:false,priority:9},
+  {id:"hungry",label:"肚子餓",category:"body",emergency:false,priority:8},
+  {id:"sleepy",label:"想睡覺",category:"body",emergency:false,priority:7},
+  {id:"itch",label:"癢",category:"body",emergency:false,priority:6},
+  {id:"pain",label:"痛",category:"body",emergency:false,priority:9},
+  {id:"pain_head",label:"頭痛",category:"body",emergency:false,priority:9},
+  {id:"pain_chest_body",label:"胸口痛",category:"body",emergency:false,priority:10},
+  {id:"pain_abdomen",label:"肚子痛",category:"body",emergency:false,priority:9},
+  {id:"pain_back",label:"背痛",category:"body",emergency:false,priority:8},
+  {id:"pain_arm",label:"手臂痛",category:"body",emergency:false,priority:8},
+  {id:"pain_leg",label:"腿痛",category:"body",emergency:false,priority:8},
+  {id:"pain_foot",label:"腳痛",category:"body",emergency:false,priority:7},
+  {id:"pain_mild",label:"輕微的痛",category:"body",emergency:false,priority:6},
+  {id:"pain_moderate",label:"中等程度痛",category:"body",emergency:false,priority:8},
+  {id:"pain_severe",label:"很嚴重的痛",category:"body",emergency:false,priority:10},
+  {id:"pain_continuous",label:"持續的痛",category:"body",emergency:false,priority:9},
+  {id:"pain_sharp",label:"刺痛或抽痛",category:"body",emergency:false,priority:9},
+  {id:"uncomfortable",label:"不舒服",category:"body",emergency:false,priority:8},
+  {id:"breath",label:"呼吸不舒服",category:"body",emergency:true,priority:10},
+  {id:"too_cold",label:"太冷",category:"env",emergency:false,priority:7},
+  {id:"too_hot",label:"太熱",category:"env",emergency:false,priority:7},
+  {id:"turn_over",label:"要翻身",category:"env",emergency:false,priority:9},
+  {id:"too_noisy",label:"太吵",category:"env",emergency:false,priority:6},
+  {id:"too_bright",label:"燈太亮",category:"env",emergency:false,priority:6},
+  {id:"sit_up",label:"想坐起來",category:"env",emergency:false,priority:8},
+  {id:"lie_down",label:"想躺下",category:"env",emergency:false,priority:8},
+  {id:"clean",label:"要整理清潔",category:"env",emergency:false,priority:6},
+  {id:"refuse_medicine",label:"不想吃這藥",category:"treatment",emergency:false,priority:8},
+  {id:"refuse_injection",label:"不想打這針",category:"treatment",emergency:false,priority:8},
+  {id:"refuse_care_op",label:"不要這個護理操作",category:"treatment",emergency:false,priority:8},
+  {id:"prefer_doctor",label:"想換醫護人員",category:"treatment",emergency:false,priority:7},
+  {id:"pause_treatment",label:"想暫停這項療程",category:"treatment",emergency:false,priority:8},
+  {id:"postpone_treatment",label:"想推遲療程",category:"treatment",emergency:false,priority:7},
+  {id:"pain_too_much",label:"止痛不夠",category:"treatment",emergency:false,priority:9},
+  {id:"pain_ok",label:"疼痛可以接受",category:"treatment",emergency:false,priority:5},
+  {id:"prefer_treatment",label:"希望繼續這療程",category:"treatment",emergency:false,priority:6},
+  {id:"ask_surgery_time",label:"詢問手術時間",category:"medical",emergency:false,priority:8},
+  {id:"ask_leave",label:"想請假外出",category:"medical",emergency:false,priority:7},
+  {id:"ask_report",label:"想看檢查報告",category:"medical",emergency:false,priority:7},
+  {id:"question_plan",label:"對治療計畫有疑問",category:"medical",emergency:false,priority:8},
+  {id:"want_discuss",label:"想和醫護討論",category:"medical",emergency:false,priority:8},
+  {id:"ask_discharge",label:"詢問出院時間",category:"medical",emergency:false,priority:7},
+  {id:"ask_next_step",label:"下一步療程是什麼",category:"medical",emergency:false,priority:7},
+  {id:"call_family_general",label:"找家人（不指定）",category:"social",emergency:false,priority:9},
+  {id:"call_nurse",label:"找醫護照護者",category:"social",emergency:false,priority:9},
+  {id:"see_phone",label:"想看手機",category:"social",emergency:false,priority:5},
+  {id:"see_time",label:"想看時間",category:"social",emergency:false,priority:5},
+  {id:"something_say",label:"有事要說",category:"social",emergency:false,priority:8},
+  {id:"repeat",label:"再說一次",category:"social",emergency:false,priority:7},
+  {id:"not_these",label:"不是這些",category:"social",emergency:false,priority:3},
+  {id:"other",label:"其他",category:"social",emergency:false,priority:2},
+  {id:"nervous",label:"緊張",category:"emotion",emergency:false,priority:6},
+  {id:"scared",label:"害怕",category:"emotion",emergency:false,priority:7},
+  {id:"angry",label:"生氣",category:"emotion",emergency:false,priority:6},
+  {id:"sad",label:"難過",category:"emotion",emergency:false,priority:6},
+  {id:"very_tired",label:"很累",category:"emotion",emergency:false,priority:7},
+  {id:"cant_express",label:"說不清楚",category:"emotion",emergency:false,priority:3},
+  {id:"feel_better",label:"感覺好多了",category:"emotion",emergency:false,priority:5},
+  {id:"worried",label:"很擔心",category:"emotion",emergency:false,priority:7},
+  {id:"anxious_unsafe",label:"沒有安全感",category:"emotion",emergency:false,priority:8},
+  {id:"restless",label:"坐立難安",category:"emotion",emergency:false,priority:7},
+  // ── 身體（真實病房補充）──
+  {id:"suction",label:"抽痰",category:"body",emergency:false,priority:10},
+  {id:"listen_music",label:"聽歌",category:"body",emergency:false,priority:5},
+  // ── 環境/姿勢（真實病房補充）──
+  {id:"no_footboard",label:"不想穿垂足板",category:"env",emergency:false,priority:8},
+  {id:"toilet_chair",label:"想用坐便盆椅",category:"env",emergency:false,priority:9},
+  {id:"sit_higher",label:"想坐高一點",category:"env",emergency:false,priority:8},
+  {id:"wheelchair",label:"想坐輪椅",category:"env",emergency:false,priority:7},
+  {id:"blanket_half",label:"棉被蓋一半",category:"env",emergency:false,priority:6},
+  {id:"adjust_head",label:"頭的位置調整",category:"env",emergency:false,priority:8},
+  {id:"adjust_foot",label:"腳的位置調整",category:"env",emergency:false,priority:7},
+  {id:"hand_out",label:"手要在被子外",category:"env",emergency:false,priority:6},
+  {id:"glasses",label:"帶眼鏡",category:"env",emergency:false,priority:7},
+  {id:"lights_off",label:"關燈",category:"env",emergency:false,priority:6},
+  // ── 社交（真實病房補充）──
+  {id:"see_ipad",label:"看iPad",category:"social",emergency:false,priority:6},
+  {id:"video_call_family",label:"視訊看家人",category:"social",emergency:false,priority:9},
+  {id:"want_hug",label:"想握手或抱抱",category:"social",emergency:false,priority:8},
+  {id:"want_go_home",label:"想回家",category:"social",emergency:false,priority:7},
+]
+
+const CAT_LABELS={emergency:"緊急狀況",body:"身體需求",env:"環境/照護",treatment:"療程意見",medical:"醫療安排",social:"人/事情",emotion:"情緒/狀態"}
+const CAT_COLORS={emergency:"#ff3b30",body:"#0a84ff",env:"#30d158",treatment:"#bf5af2",medical:"#32ade6",social:"#ff9f0a",emotion:"#ff6b35"}
+const CAT_ORDER=["emergency","body","env","treatment","medical","social","emotion"]
+
+// ══════════════════════════════════════════════
+// DECISION TREE
+// ══════════════════════════════════════════════
+const QUESTIONS={
+  q_emergency_check:{text:"是緊急狀況嗎？",hint:"（很痛、呼吸困難、胸口不舒服）",type:"yes_no",yes_next:"q_emergency_which",no_next:"q_top_category"},
+  q_emergency_which:{text:"是哪一種緊急？",hint:"",type:"choice_3",choices:[
+    {value:"1",label:"很痛 / 胸口不舒服",next:"q_emergency_pain"},
+    {value:"2",label:"呼吸困難 / 想吐 / 頭暈",next:"q_emergency_breath"},
+    {value:"3",label:"立刻找醫護",next:"result_call_now"}
+  ]},
+  q_emergency_pain:{text:"是胸口不舒服嗎？",hint:"",type:"yes_no",yes_next:"result_chest",no_next:"result_severe_pain"},
+  q_emergency_breath:{text:"是呼吸困難嗎？",hint:"",type:"yes_no",yes_next:"result_cant_breathe",no_next:"q_emergency_nausea"},
+  q_emergency_nausea:{text:"是想吐嗎？",hint:"",type:"yes_no",yes_next:"result_nausea",no_next:"result_dizzy"},
+  q_top_category:{text:"請選擇大類別",hint:"",type:"choice_3",choices:[
+    {value:"1",label:"身體 / 環境",next:"q_body_or_env"},
+    {value:"2",label:"療程 / 醫療安排",next:"q_treatment_or_medical"},
+    {value:"3",label:"找人 / 情緒 / 其他",next:"q_social_type"}
+  ]},
+  q_body_or_env:{text:"是身體感受嗎？",hint:"（喝水、痛、癢、不舒服…）",type:"yes_no",yes_next:"q_body_type",no_next:"q_env_type"},
+  q_body_type:{text:"是基本生理需求嗎？",hint:"（喝水、廁所、餓、睡）",type:"yes_no",yes_next:"q_body_basic",no_next:"q_body_discomfort"},
+  q_body_basic:{text:"是喝水或廁所嗎？",hint:"",type:"yes_no",yes_next:"q_body_drink_toilet",no_next:"q_body_hungry_sleep"},
+  q_body_drink_toilet:{text:"是喝水嗎？",hint:"",type:"yes_no",yes_next:"result_drink_water",no_next:"result_toilet"},
+  q_body_hungry_sleep:{text:"是肚子餓嗎？",hint:"",type:"yes_no",yes_next:"result_hungry",no_next:"result_sleepy"},
+  q_body_discomfort:{text:"是痛嗎？",hint:"",type:"yes_no",yes_next:"q_pain_location",no_next:"q_body_discomfort2"},
+  q_pain_location:{text:"是上半身的痛嗎？",hint:"（頭、胸、腹、背、手臂）",type:"yes_no",yes_next:"q_pain_upper",no_next:"q_pain_lower"},
+  q_pain_upper:{text:"請選擇位置",hint:"",type:"choice_3",choices:[
+    {value:"1",label:"頭或頸部",next:"q_pain_upper_head"},
+    {value:"2",label:"胸口或腹部",next:"q_pain_upper_chest"},
+    {value:"3",label:"背部或手臂",next:"q_pain_upper_back"}
+  ]},
+  q_pain_upper_head:{text:"是頭痛嗎？",hint:"",type:"yes_no",yes_next:"q_pain_severity",no_next:"result_pain"},
+  q_pain_upper_chest:{text:"是胸口痛嗎？",hint:"",type:"yes_no",yes_next:"q_pain_chest_check",no_next:"q_pain_severity"},
+  q_pain_chest_check:{text:"有呼吸困難或心跳異常嗎？",hint:"（如果有，可能是緊急狀況）",type:"yes_no",yes_next:"result_chest",no_next:"q_pain_severity"},
+  q_pain_upper_back:{text:"是背痛嗎？",hint:"",type:"yes_no",yes_next:"q_pain_severity",no_next:"q_pain_severity"},
+  q_pain_lower:{text:"請選擇位置",hint:"",type:"choice_3",choices:[
+    {value:"1",label:"臀部或髖部",next:"q_pain_severity"},
+    {value:"2",label:"大腿或小腿",next:"q_pain_severity"},
+    {value:"3",label:"腳踝或腳",next:"q_pain_severity"}
+  ]},
+  q_pain_severity:{text:"是很嚴重的痛嗎？",hint:"（難以忍受）",type:"yes_no",yes_next:"q_pain_nature_severe",no_next:"q_pain_nature_mild"},
+  q_pain_nature_severe:{text:"是持續不斷的痛嗎？",hint:"（不是陣發的）",type:"yes_no",yes_next:"result_pain_continuous",no_next:"result_pain_sharp"},
+  q_pain_nature_mild:{text:"是刺痛或抽痛嗎？",hint:"",type:"yes_no",yes_next:"result_pain_sharp",no_next:"result_pain_mild"},
+  q_body_discomfort2:{text:"需要抽痰嗎？",hint:"",type:"yes_no",yes_next:"result_suction",no_next:"q_body_discomfort3"},
+  q_body_discomfort3:{text:"是呼吸不舒服嗎？",hint:"",type:"yes_no",yes_next:"result_breath",no_next:"q_body_itch"},
+  q_body_itch:{text:"是癢嗎？",hint:"",type:"yes_no",yes_next:"result_itch",no_next:"result_uncomfortable"},
+  q_env_type:{text:"是姿勢或移動相關嗎？",hint:"（翻身、如廁、位置調整…）",type:"yes_no",yes_next:"q_env_posture",no_next:"q_env_other"},
+  q_env_posture:{text:"是如廁相關嗎？",hint:"（坐便盆椅）",type:"yes_no",yes_next:"result_toilet_chair",no_next:"q_env_posture2"},
+  q_env_posture2:{text:"要翻身嗎？",hint:"",type:"yes_no",yes_next:"result_turn_over",no_next:"q_env_posture3"},
+  q_env_posture3:{text:"是位置調整嗎？",hint:"（頭、腳、手）",type:"yes_no",yes_next:"q_env_adjust",no_next:"q_env_sit_lie"},
+  q_env_adjust:{text:"是頭的位置嗎？",hint:"",type:"yes_no",yes_next:"result_adjust_head",no_next:"q_env_adjust2"},
+  q_env_adjust2:{text:"是腳的位置嗎？",hint:"",type:"yes_no",yes_next:"result_adjust_foot",no_next:"result_hand_out"},
+  q_env_sit_lie:{text:"是想坐起來或坐高嗎？",hint:"",type:"yes_no",yes_next:"q_env_sit_type",no_next:"q_env_wheelchair"},
+  q_env_sit_type:{text:"是想坐高一點嗎？",hint:"",type:"yes_no",yes_next:"result_sit_higher",no_next:"result_sit_up"},
+  q_env_wheelchair:{text:"想坐輪椅嗎？",hint:"",type:"yes_no",yes_next:"result_wheelchair",no_next:"result_lie_down"},
+  q_env_other:{text:"是溫度相關嗎？",hint:"（太冷、太熱）",type:"yes_no",yes_next:"q_env_temp",no_next:"q_env_covers"},
+  q_env_temp:{text:"是太冷嗎？",hint:"",type:"yes_no",yes_next:"result_too_cold",no_next:"result_too_hot"},
+  q_env_covers:{text:"是棉被相關嗎？",hint:"（蓋一半）",type:"yes_no",yes_next:"result_blanket_half",no_next:"q_env_noise_light"},
+  q_env_noise_light:{text:"是太吵嗎？",hint:"",type:"yes_no",yes_next:"result_too_noisy",no_next:"q_env_light"},
+  q_env_light:{text:"是燈太亮嗎？",hint:"",type:"yes_no",yes_next:"result_too_bright",no_next:"q_env_misc"},
+  q_env_misc:{text:"是要關燈嗎？",hint:"",type:"yes_no",yes_next:"result_lights_off",no_next:"q_env_misc2"},
+  q_env_misc2:{text:"是不想穿垂足板嗎？",hint:"",type:"yes_no",yes_next:"result_no_footboard",no_next:"result_clean"},
+  q_treatment_or_medical:{text:"是關於療程本身的感受嗎？",hint:"（想拒絕、暫停、或對疼痛有意見）",type:"yes_no",yes_next:"q_treatment_type",no_next:"q_medical_type"},
+  q_treatment_type:{text:"是想拒絕或暫停某項療程嗎？",hint:"",type:"yes_no",yes_next:"q_treatment_refuse",no_next:"q_treatment_pain"},
+  q_treatment_refuse:{text:"是拒絕藥物或注射嗎？",hint:"",type:"yes_no",yes_next:"q_treatment_medicine",no_next:"q_treatment_op"},
+  q_treatment_medicine:{text:"是不想吃這個藥嗎？",hint:"",type:"yes_no",yes_next:"result_refuse_medicine",no_next:"result_refuse_injection"},
+  q_treatment_op:{text:"是不要這個護理操作嗎？",hint:"",type:"yes_no",yes_next:"result_refuse_care_op",no_next:"q_treatment_pause"},
+  q_treatment_pause:{text:"是想暫停這項療程嗎？",hint:"",type:"yes_no",yes_next:"result_pause_treatment",no_next:"q_treatment_postpone"},
+  q_treatment_postpone:{text:"是想推遲療程嗎？",hint:"",type:"yes_no",yes_next:"result_postpone_treatment",no_next:"result_prefer_doctor"},
+  q_treatment_pain:{text:"是關於疼痛管理嗎？",hint:"",type:"yes_no",yes_next:"q_pain_enough",no_next:"result_prefer_treatment"},
+  q_pain_enough:{text:"是止痛不夠嗎？",hint:"",type:"yes_no",yes_next:"result_pain_too_much",no_next:"result_pain_ok"},
+  q_medical_type:{text:"是想問手術或出院安排嗎？",hint:"",type:"yes_no",yes_next:"q_medical_schedule",no_next:"q_medical_discuss"},
+  q_medical_schedule:{text:"是手術相關嗎？",hint:"",type:"yes_no",yes_next:"result_ask_surgery_time",no_next:"q_medical_leave"},
+  q_medical_leave:{text:"是想請假外出嗎？",hint:"",type:"yes_no",yes_next:"result_ask_leave",no_next:"result_ask_discharge"},
+  q_medical_discuss:{text:"是想看檢查報告嗎？",hint:"",type:"yes_no",yes_next:"result_ask_report",no_next:"result_question_plan"},
+  q_social_type:{text:"是找人嗎？",hint:"（家人、醫護…）",type:"yes_no",yes_next:"q_social_people",no_next:"q_emotion_type"},
+  q_social_people:{text:"是找家人嗎？",hint:"",type:"yes_no",yes_next:"q_family_who",no_next:"result_call_nurse"},
+  q_social_action:{text:"是想看媒體嗎？",hint:"（手機、iPad、聽歌）",type:"yes_no",yes_next:"q_social_media",no_next:"q_social_connect"},
+  q_social_media:{text:"是想看手機嗎？",hint:"",type:"yes_no",yes_next:"result_see_phone",no_next:"q_social_ipad"},
+  q_social_ipad:{text:"是想看iPad嗎？",hint:"",type:"yes_no",yes_next:"result_see_ipad",no_next:"result_listen_music"},
+  q_social_connect:{text:"是想和家人連線嗎？",hint:"（視訊、抱抱）",type:"yes_no",yes_next:"q_social_connect2",no_next:"q_social_say"},
+  q_social_connect2:{text:"是想視訊看家人嗎？",hint:"",type:"yes_no",yes_next:"result_video_call_family",no_next:"result_want_hug"},
+  q_social_say:{text:"是有事要說嗎？",hint:"",type:"yes_no",yes_next:"result_something_say",no_next:"q_social_home"},
+  q_social_home:{text:"是想回家嗎？",hint:"",type:"yes_no",yes_next:"result_want_go_home",no_next:"result_repeat"},
+  q_emotion_type:{text:"是情緒感受嗎？",hint:"（緊張、害怕、生氣…）",type:"yes_no",yes_next:"q_emotion_which",no_next:"q_social_action"},
+  q_emotion_which:{text:"請選擇",hint:"",type:"choice_3",choices:[
+    {value:"1",label:"緊張 / 害怕 / 沒安全感",next:"q_emotion_fear"},
+    {value:"2",label:"生氣 / 難過 / 想回家",next:"q_emotion_sad"},
+    {value:"3",label:"很累 / 坐立難安 / 說不清楚",next:"q_emotion_tired"}
+  ]},
+  q_emotion_fear:{text:"是沒有安全感嗎？",hint:"",type:"yes_no",yes_next:"result_anxious_unsafe",no_next:"q_emotion_fear2"},
+  q_emotion_fear2:{text:"是緊張或擔心嗎？",hint:"",type:"yes_no",yes_next:"q_emotion_nervous_worried",no_next:"result_scared"},
+  q_emotion_nervous_worried:{text:"是擔心病情或療程嗎？",hint:"",type:"yes_no",yes_next:"result_worried",no_next:"result_nervous"},
+  q_emotion_sad:{text:"是想回家嗎？",hint:"",type:"yes_no",yes_next:"result_want_go_home",no_next:"q_emotion_sad2"},
+  q_emotion_sad2:{text:"是生氣嗎？",hint:"",type:"yes_no",yes_next:"result_angry",no_next:"result_sad"},
+  q_emotion_tired:{text:"是坐立難安嗎？",hint:"",type:"yes_no",yes_next:"result_restless",no_next:"q_emotion_tired2"},
+  q_emotion_tired2:{text:"是很累嗎？",hint:"",type:"yes_no",yes_next:"result_very_tired",no_next:"result_cant_express"},
+}
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let S={currentNode:'q_top_category',breadcrumb:[],startTime:null,fallbackCount:0,currentIntent:null,manualSelected:null,manualFilter:'all',aiSuggestion:null}
+
+// ══════════════════════════════════════════════
+// STORAGE
+// ══════════════════════════════════════════════
+function loadFreq(){try{return JSON.parse(localStorage.getItem('intentFreqV3')||'{}')}catch{return{}}}
+function saveFreq(f){localStorage.setItem('intentFreqV3',JSON.stringify(f))}
+function recordSuccess(id){const f=loadFreq();f[id]=(f[id]||0)+1;saveFreq(f)}
+function loadHistory(){try{return JSON.parse(localStorage.getItem('sessHistV3')||'[]')}catch{return[]}}
+function saveSessionRecord(s){const h=loadHistory();h.unshift(s);localStorage.setItem('sessHistV3',JSON.stringify(h.slice(0,50)))}
+function loadFamily(){try{return JSON.parse(localStorage.getItem('familyList')||'[]')}catch{return[]}}
+function saveFamily(f){localStorage.setItem('familyList',JSON.stringify(f))}
+function loadProfile(){try{return JSON.parse(localStorage.getItem('patientProfile')||'{}')}catch{return{}}}
+function saveProfileData(p){localStorage.setItem('patientProfile',JSON.stringify(p))}
+function loadAISuggestion(){try{return JSON.parse(localStorage.getItem('aiSuggestion')||'null')}catch{return null}}
+function saveAISuggestion(s){localStorage.setItem('aiSuggestion',JSON.stringify(s))}
+
+function getAllIntents(){
+  const family=loadFamily()
+  const fIntents=family.map(m=>({id:`call_family_${m.id}`,label:`找${m.name}`,category:'social',emergency:false,priority:9,_familyId:m.id}))
+  const customTree=loadCustomTree()
+  const customIntents=customTree&&customTree.intents?customTree.intents:[]
+  return [...BASE_INTENTS,...fIntents,...customIntents]
+}
+
+function getSorted(){
+  const f=loadFreq(),ai=loadAISuggestion()
+  const boostIds=ai&&ai.boost_intent_ids?new Set(ai.boost_intent_ids):new Set()
+  return [...getAllIntents()].sort((a,b)=>{
+    if(a.emergency&&!b.emergency)return-1
+    if(!a.emergency&&b.emergency)return 1
+    const aBoost=boostIds.has(a.id)?50:0
+    const bBoost=boostIds.has(b.id)?50:0
+    return (f[b.id]||0)+bBoost-(f[a.id]||0)-aBoost
+  })
+}
+
+// ══════════════════════════════════════════════
+// ROUTING
+// ══════════════════════════════════════════════
+function showScreen(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden'))
+  document.getElementById(name).classList.remove('hidden')
+  if(name==='home')     renderHome()
+  if(name==='manual')   renderManual('all')
+  if(name==='history')  renderHistory()
+  if(name==='settings') renderSettings()
+  if(name==='profile')  renderProfile()
+  if(name==='feedback') renderFeedback()
+}
+
+// ══════════════════════════════════════════════
+// PROFILE
+// ══════════════════════════════════════════════
+let profileTags={med:[],allergy:[],staff:[]}
+
+
+// ══════════════════════════════════════════════
+// TREATMENT LIST + CUSTOM TREE
+// ══════════════════════════════════════════════
+function loadTreatments(){try{return JSON.parse(localStorage.getItem('treatmentList')||'[]')}catch{return[]}}
+function saveTreatments(t){localStorage.setItem('treatmentList',JSON.stringify(t))}
+function loadCustomTree(){try{return JSON.parse(localStorage.getItem('customTree')||'null')}catch{return null}}
+function saveCustomTree(t){localStorage.setItem('customTree',JSON.stringify(t))}
+
+const TREATMENT_TYPES={medicine:'藥物',rehab:'復健',surgery:'手術',nursing:'護理操作',other:'其他'}
+
+function addTreatmentItem(){
+  const items=loadTreatments()
+  items.push({id:`tr_${Date.now()}`,name:'',type:'medicine',refused:false,preferred:false,notes:''})
+  saveTreatments(items)
+  renderTreatmentList()
+}
+
+function updateTreatmentField(id,field,value){
+  const items=loadTreatments()
+  const item=items.find(i=>i.id===id)
+  if(item){
+    if(field==='refused'||field==='preferred') item[field]=value
+    else item[field]=value
+    saveTreatments(items)
+    if(field==='refused'||field==='preferred') renderTreatmentList()
+  }
+}
+
+function removeTreatmentItem(id){
+  saveTreatments(loadTreatments().filter(i=>i.id!==id))
+  renderTreatmentList()
+}
+
+function renderTreatmentList(){
+  const items=loadTreatments()
+  const container=document.getElementById('treatment-list-items')
+  container.innerHTML=''
+  if(!items.length) return
+  items.forEach(function(item){
+    const wrap=document.createElement('div')
+    wrap.style.cssText='background:var(--surface);border:1.5px solid '+(item.refused?'rgba(255,59,48,0.5)':item.preferred?'rgba(48,209,88,0.4)':'var(--border)')+';border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px'
+
+    // Row 1: name input + type select + delete
+    const row1=document.createElement('div')
+    row1.style.cssText='display:flex;gap:8px;align-items:center'
+
+    const nameInput=document.createElement('input')
+    nameInput.type='text'; nameInput.value=item.name
+    nameInput.placeholder='名稱（例：中藥、復健操、換藥）'
+    nameInput.style.cssText='flex:1;font-size:16px;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;padding:10px 12px;outline:none'
+    nameInput.onchange=function(){updateTreatmentField(item.id,'name',this.value)}
+
+    const typeSelect=document.createElement('select')
+    typeSelect.style.cssText='width:96px;font-size:13px;background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;padding:8px 6px;outline:none'
+    Object.entries(TREATMENT_TYPES).forEach(function(entry){
+      const opt=document.createElement('option')
+      opt.value=entry[0]; opt.textContent=entry[1]
+      if(item.type===entry[0]) opt.selected=true
+      typeSelect.appendChild(opt)
+    })
+    typeSelect.onchange=function(){updateTreatmentField(item.id,'type',this.value)}
+
+    const delBtn=document.createElement('button')
+    delBtn.textContent='×'
+    delBtn.style.cssText='background:transparent;color:var(--red);font-size:20px;padding:4px 10px;border:none;border-radius:6px;flex-shrink:0;cursor:pointer'
+    delBtn.onclick=function(){removeTreatmentItem(item.id)}
+
+    row1.appendChild(nameInput); row1.appendChild(typeSelect); row1.appendChild(delBtn)
+
+    // Row 2: refused + preferred buttons
+    const row2=document.createElement('div')
+    row2.style.cssText='display:flex;gap:8px'
+
+    const refBtn=document.createElement('button')
+    refBtn.textContent=item.refused?'✓ 曾表達抗拒':'標記抗拒'
+    refBtn.style.cssText='flex:1;font-size:13px;padding:8px 6px;border-radius:8px;cursor:pointer;border:1.5px solid '+(item.refused?'var(--red)':'var(--border)')+';background:'+(item.refused?'rgba(255,59,48,0.15)':'var(--surface2)')+';color:'+(item.refused?'var(--red)':'var(--muted)')
+    refBtn.onclick=function(){updateTreatmentField(item.id,'refused',!item.refused)}
+
+    const prefBtn=document.createElement('button')
+    prefBtn.textContent=item.preferred?'✓ 偏好':'標記偏好'
+    prefBtn.style.cssText='flex:1;font-size:13px;padding:8px 6px;border-radius:8px;cursor:pointer;border:1.5px solid '+(item.preferred?'var(--green)':'var(--border)')+';background:'+(item.preferred?'rgba(48,209,88,0.12)':'var(--surface2)')+';color:'+(item.preferred?'var(--green)':'var(--muted)')
+    prefBtn.onclick=function(){updateTreatmentField(item.id,'preferred',!item.preferred)}
+
+    row2.appendChild(refBtn); row2.appendChild(prefBtn)
+    wrap.appendChild(row1); wrap.appendChild(row2)
+    container.appendChild(wrap)
+  })
+}
+
+async function generateCustomTree(){
+  const items=loadTreatments().filter(i=>i.name.trim())
+  if(!items.length){alert('請先加入至少一筆療程或藥物');return}
+  const btn=document.getElementById('tree-gen-btn')
+  const result=document.getElementById('tree-gen-result')
+  btn.textContent='⚙ 生成中…'
+  btn.disabled=true
+  result.classList.remove('hidden')
+  result.innerHTML='AI 正在分析療程清單，生成客製決策樹…'
+
+  const profile=loadProfile()
+  const listDesc=items.map(i=>{
+    let s=`- ${i.name}（${TREATMENT_TYPES[i.type]||i.type}）`
+    if(i.refused) s+=' ⚠ 曾表達抗拒'
+    if(i.preferred) s+=' ✓ 患者偏好'
+    if(i.notes) s+=` 備註：${i.notes}`
+    return s
+  }).join('\n')
+
+  const exampleJson = '{"q_custom_treatment_start":{"text":"是關於中藥嗎？","hint":"（患者曾表達抗拒）","type":"yes_no","yes_next":"result_custom_refuse_zhongyao","no_next":"q_custom_t2"},"result_custom_refuse_zhongyao":{"label":"不想喝中藥","category":"treatment"}}'
+  const promptParts = [
+    '你是一個輔助溝通系統的決策樹設計師。',
+    '患者的個人療程清單：' + listDesc,
+    '診斷：' + (profile.diagnosis||'未填'),
+    '任務：設計針對「療程意見」的客製化決策樹 JSON，直接問具體療程或藥物名稱，不要泛問。',
+    '規則：1.節點類型只有 yes_no 或 choice_3  2.choice_3 最多3選項  3.「曾抗拒」的優先排前  4.result節點id以result_custom_開頭  5.入口節點id固定為q_custom_treatment_start  6.每個result有label欄位（繁中）',
+    '只回傳JSON物件不要其他文字。範例：' + exampleJson
+  ]
+  const prompt = promptParts.join('\n')
+
+  try{
+    const res=await fetch(API_ENDPOINT,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    })
+    const data=await res.json()
+    const text=data.content.map(b=>b.text||'').join('')
+    const parsed=JSON.parse(text.replace(/```json|```/g,'').trim())
+
+    // Validate: must have entry node
+    if(!parsed['q_custom_treatment_start']){throw new Error('缺少入口節點 q_custom_treatment_start')}
+
+    // Extract result labels as custom intents
+    const customIntents=Object.entries(parsed)
+      .filter(([k,v])=>k.startsWith('result_custom_')&&v.label)
+      .map(([k,v])=>({id:k.replace('result_',''),label:v.label,category:v.category||'treatment',emergency:false,priority:8,_custom:true}))
+
+    saveCustomTree({nodes:parsed,intents:customIntents,generated_at:new Date().toISOString()})
+
+    const refusedCount=items.filter(i=>i.refused).length
+    const nodeCount=Object.keys(parsed).length
+    result.innerHTML=`<div style="color:var(--green);font-weight:600;margin-bottom:8px">✓ 客製決策樹已更新</div>
+      <div style="color:var(--muted);font-size:13px;line-height:1.8">
+        共生成 ${nodeCount} 個節點<br>
+        涵蓋 ${customIntents.length} 個具體療程意圖<br>
+        ${refusedCount?`${refusedCount} 項「曾抗拒」的療程已優先排列`:''}
+      </div>
+      <div style="margin-top:10px;font-size:13px;color:var(--muted)">具體意圖：${customIntents.map(i=>`<span style="background:rgba(191,90,242,0.12);border-radius:4px;padding:1px 6px;margin:2px;display:inline-block">${i.label}</span>`).join('')}</div>`
+  }catch(err){
+    result.innerHTML=`<span style="color:var(--red)">生成失敗：${err.message}</span>`
+  }
+  btn.textContent='⚙ 更新客製決策樹'
+  btn.disabled=false
+}
+
+function renderProfile(){
+  const p=loadProfile()
+  document.getElementById('p-name').value=p.name||''
+  document.getElementById('p-diagnosis').value=p.diagnosis||''
+  document.getElementById('p-dob').value=p.dob||''
+  document.getElementById('p-procedures').value=p.procedures||''
+  document.getElementById('p-notes').value=p.notes||''
+  profileTags.med=p.medications||[]
+  profileTags.allergy=p.allergies||[]
+  profileTags.staff=p.preferred_staff||[]
+  renderTags('med');renderTags('allergy');renderTags('staff')
+  renderTreatmentList()
+  const ct=loadCustomTree()
+  if(ct){
+    const r=document.getElementById('tree-gen-result')
+    r.classList.remove('hidden')
+    r.innerHTML=`<div style="color:var(--green);font-size:13px">✓ 客製決策樹已存在（${new Date(ct.generated_at).toLocaleString('zh-TW')}）— ${ct.intents?ct.intents.length:0} 個具體意圖</div>`
+  }
+  const ai=loadAISuggestion()
+  if(ai){
+    document.getElementById('llm-result').classList.remove('hidden')
+    document.getElementById('llm-result').innerHTML=formatAIResult(ai)
+  }
+}
+
+function renderTags(type){
+  const container=document.getElementById(`${type}-tags`)
+  container.innerHTML=profileTags[type].map((t,i)=>`
+    <span class="tag">${t}<button onclick="removeTag('${type}',${i})">×</button></span>`).join('')
+}
+
+function addTag(type){
+  const input=document.getElementById(`${type}-input`)
+  const val=input.value.trim()
+  if(!val)return
+  profileTags[type].push(val)
+  input.value=''
+  renderTags(type)
+}
+
+function removeTag(type,i){
+  profileTags[type].splice(i,1)
+  renderTags(type)
+}
+
+function saveProfile(){
+  const p={
+    name:document.getElementById('p-name').value.trim(),
+    diagnosis:document.getElementById('p-diagnosis').value.trim(),
+    dob:document.getElementById('p-dob').value,
+    procedures:document.getElementById('p-procedures').value.trim(),
+    notes:document.getElementById('p-notes').value.trim(),
+    medications:[...profileTags.med],
+    allergies:[...profileTags.allergy],
+    preferred_staff:[...profileTags.staff],
+    updated_at:new Date().toISOString()
+  }
+  saveProfileData(p)
+  const btn=document.getElementById('llm-btn')
+  btn.textContent='✓ 儲存成功'
+  setTimeout(()=>{btn.textContent='✦ 請 AI 分析並給出建議';showScreen('home')},900)
+}
+
+// ══════════════════════════════════════════════
+// LLM ANALYSIS
+// ══════════════════════════════════════════════
+async function runLLMAnalysis(){
+  const btn=document.getElementById('llm-btn')
+  const resultEl=document.getElementById('llm-result')
+  const profile=loadProfile()
+  const history=loadHistory().slice(0,10)
+  const freq=loadFreq()
+
+  // Build top-5 frequent intents for context
+  const topFreq=Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([id,n])=>{
+    const found=getAllIntents().find(i=>i.id===id)
+    return found?`${found.label}(${n}次)`:id
+  }).join('、')||'（無）'
+
+  const prompt=`你是一個失能患者輔助溝通系統的 AI 分析助理。
+
+以下是患者的病史資料：
+- 姓名/稱謂：${profile.name||'未填'}
+- 主要診斷：${profile.diagnosis||'未填'}
+- 目前用藥：${profile.medications&&profile.medications.length?profile.medications.join('、'):'未填'}
+- 過敏紀錄：${profile.allergies&&profile.allergies.length?profile.allergies.join('、'):'無'}
+- 近期療程/手術安排：${profile.procedures||'未填'}
+- 偏好醫護人員：${profile.preferred_staff&&profile.preferred_staff.length?profile.preferred_staff.join('、'):'未填'}
+- 其他備註：${profile.notes||'無'}
+
+近 7 天最常出現的意圖：${topFreq}
+
+請根據以上資訊，完成以下任務：
+
+1. 寫一段給輔助者看的「今日照護提示」（2-3句，簡潔，提醒最可能發生的需求）
+2. 列出 3-5 個「建議優先確認的意圖 ID」，從以下清單中選擇：
+   drink_water, toilet, hungry, sleepy, pain, uncomfortable, breath, too_cold, too_hot, turn_over, sit_up, lie_down, refuse_medicine, refuse_injection, refuse_care_op, prefer_doctor, pause_treatment, pain_too_much, ask_surgery_time, ask_leave, ask_report, question_plan, call_family_general, call_nurse, nervous, scared, worried, very_tired
+3. 若有需要特別注意的風險，寫一句「注意事項」
+
+請只回傳 JSON，格式如下，不要有任何其他文字：
+{
+  "caregiver_hint": "...",
+  "boost_intent_ids": ["id1","id2","id3"],
+  "risk_note": "..." 
+}`
+
+  btn.textContent='分析中…'
+  btn.disabled=true
+  resultEl.classList.add('hidden')
+
+  try{
+    const response=await fetch(API_ENDPOINT,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        messages:[{role:'user',content:prompt}]
+      })
+    })
+    const data=await response.json()
+    const text=data.content.map(i=>i.text||'').join('')
+    const clean=text.replace(/```json|```/g,'').trim()
+    const parsed=JSON.parse(clean)
+    saveAISuggestion(parsed)
+    resultEl.classList.remove('hidden')
+    resultEl.innerHTML=formatAIResult(parsed)
+    // Also show banner on home
+    saveAISuggestion({...parsed,generated_at:new Date().toISOString()})
+  }catch(err){
+    resultEl.classList.remove('hidden')
+    resultEl.innerHTML=`<span style="color:var(--red)">分析失敗：${err.message||'請確認網路連線'}</span>`
+  }
+  btn.textContent='✦ 重新分析'
+  btn.disabled=false
+}
+
+function formatAIResult(ai){
+  const boostLabels=(ai.boost_intent_ids||[]).map(id=>{
+    const found=getAllIntents().find(i=>i.id===id)
+    return found?`<span style="background:rgba(191,90,242,0.15);border:1px solid rgba(191,90,242,0.3);border-radius:6px;padding:2px 8px;font-size:13px;margin:2px;display:inline-block">${found.label}</span>`:''
+  }).join('')
+  return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span class="ai-badge">AI 分析結果</span><span style="font-size:12px;color:var(--muted)">${ai.generated_at?new Date(ai.generated_at).toLocaleString('zh-TW'):{}.toString()}</span></div>
+    <div style="margin-bottom:12px"><div style="font-size:13px;color:var(--muted);margin-bottom:4px">今日照護提示</div><div style="font-size:15px;line-height:1.7">${ai.caregiver_hint||'—'}</div></div>
+    ${boostLabels?`<div style="margin-bottom:12px"><div style="font-size:13px;color:var(--muted);margin-bottom:6px">建議優先確認的需求</div><div>${boostLabels}</div></div>`:''}
+    ${ai.risk_note?`<div style="background:rgba(255,159,10,0.1);border:1px solid rgba(255,159,10,0.3);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--orange)">⚠ ${ai.risk_note}</div>`:''}`
+}
+
+function dismissBanner(){
+  document.getElementById('llm-banner').classList.add('hidden')
+}
+
+// ══════════════════════════════════════════════
+// SESSION
+// ══════════════════════════════════════════════
+function startSession(){
+  S={currentNode:'q_top_category',breadcrumb:[],startTime:Date.now(),fallbackCount:0,currentIntent:null,manualSelected:null,manualFilter:'all',aiSuggestion:loadAISuggestion()}
+  showScreen('session')
+  // Show AI hint if available
+  const ai=S.aiSuggestion
+  if(ai&&ai.caregiver_hint){
+    document.getElementById('ai-hint').classList.remove('hidden')
+    document.getElementById('ai-hint-text').textContent=ai.caregiver_hint
+  } else {
+    document.getElementById('ai-hint').classList.add('hidden')
+  }
+  renderQuestion()
+}
+function restartSession(){startSession()}
+
+function getNode(id){
+  // Custom tree nodes (LLM-generated treatment subtree)
+  const customTree=loadCustomTree()
+  if(customTree&&customTree.nodes){
+    // Redirect treatment entry to custom tree if it exists
+    if(id==='q_treatment_type'&&customTree.nodes['q_custom_treatment_start']){
+      return customTree.nodes['q_custom_treatment_start']
+    }
+    if(customTree.nodes[id]) return customTree.nodes[id]
+  }
+  if(id==='q_family_who'){
+    const family=loadFamily()
+    if(!family.length)return{text:"找哪位家人？",hint:"（尚未設定家人）",type:"yes_no",yes_next:"result_call_family_general",no_next:"result_call_family_general"}
+    if(family.length===1)return{text:`是找${family[0].name}嗎？`,hint:"",type:"yes_no",yes_next:`result_call_family_${family[0].id}`,no_next:"result_call_family_general"}
+    if(family.length===2)return{text:`是找${family[0].name}嗎？`,hint:"",type:"yes_no",yes_next:`result_call_family_${family[0].id}`,no_next:`result_call_family_${family[1].id}`}
+    return{text:"找哪位家人？",hint:"",type:"choice_3",choices:family.slice(0,3).map((m,i)=>({value:String(i+1),label:m.name,next:`result_call_family_${m.id}`}))}
+  }
+  return QUESTIONS[id]||null
+}
+
+function renderQuestion(){
+  const node=getNode(S.currentNode)
+  if(!node){showScreen('fallback');return}
+  document.getElementById('q-counter').textContent=`第 ${S.breadcrumb.length+1} 題`
+  document.getElementById('q-text').textContent=node.text
+  document.getElementById('q-hint').textContent=node.hint||''
+  const bc=document.getElementById('breadcrumb')
+  bc.innerHTML=S.breadcrumb.map(b=>`<span style="background:var(--surface2);border-radius:6px;font-size:12px;padding:2px 8px;color:var(--muted)">${b.label}</span>`).join('')
+  const card=document.getElementById('q-card')
+  const isEmerg=S.currentNode.includes('emergency')
+  card.style.borderColor=isEmerg?'var(--emergency)':'var(--border)'
+  card.style.background=isEmerg?'rgba(255,59,48,0.1)':'var(--surface)'
+  const btns=document.getElementById('q-buttons')
+  if(node.type==='yes_no'){
+    btns.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <button onclick="answer('yes')" style="background:var(--green);color:#000;font-size:30px;padding:26px 0;border-radius:16px">✓ 是</button>
+      <button onclick="answer('no')" style="background:var(--surface2);color:var(--text);font-size:30px;padding:26px 0;border-radius:16px;border:2px solid var(--border)">✗ 不是</button>
+    </div>`
+  } else {
+    btns.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px">`+
+      node.choices.map(c=>`<button onclick="answer('${c.value}')" style="background:var(--surface2);color:var(--text);font-size:21px;padding:20px 16px;border-radius:14px;border:2px solid var(--border);text-align:left;display:flex;align-items:center;gap:14px">
+        <span style="background:var(--accent);color:#fff;width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;flex-shrink:0">${c.value}</span>${c.label}
+      </button>`).join('')+`</div>`
+  }
+}
+
+function answer(val){
+  const node=getNode(S.currentNode)
+  if(!node)return
+  let next,label
+  if(node.type==='yes_no'){next=val==='yes'?node.yes_next:node.no_next;label=val==='yes'?'是':'不是'}
+  else{const c=node.choices.find(c=>c.value===val);next=c?c.next:null;label=c?c.label:val}
+  if(!next){showScreen('fallback');return}
+  S.breadcrumb.push({q:S.currentNode,a:val,label})
+  S.currentNode=next
+  if(next.startsWith('result_')){
+    S.currentIntent=getAllIntents().find(i=>i.id===next.replace('result_',''))||null
+    showScreen('confirm');renderConfirm()
+  } else {renderQuestion()}
+}
+
+function renderConfirm(){
+  const i=S.currentIntent
+  if(!i){showScreen('fallback');return}
+  document.getElementById('confirm-q-count').textContent=`第 ${S.breadcrumb.length} 題後推定結果`
+  const card=document.getElementById('confirm-card')
+  const col=CAT_COLORS[i.category]||'var(--accent)'
+  card.style.borderColor=col
+  card.style.background=i.emergency?'rgba(255,59,48,0.12)':'var(--surface)'
+  document.getElementById('confirm-cat').textContent=(CAT_LABELS[i.category]||i.category)+(i.emergency?' ⚠️':'')
+  document.getElementById('confirm-cat').style.color=col
+  document.getElementById('confirm-label').textContent=i.label
+  document.getElementById('confirm-sentence').textContent=`你現在是「${i.label}」，對嗎？`
+  document.getElementById('refine-btn').style.display=i.emergency?'none':'block'
+}
+
+function confirmYes(detailLabel){
+  const i=S.currentIntent
+  const label=detailLabel||i.label
+  if(i){recordSuccess(i.id);saveSessionRecord({started_at:new Date(S.startTime).toISOString(),label,predicted_intent:i.id,confirmed:true,fallback_used:S.fallbackCount>0,questions_asked:S.breadcrumb.length,detail_used:!!detailLabel})}
+  showScreen('home')
+}
+
+function confirmNo(){
+  S.fallbackCount++
+  if(S.breadcrumb.length>0){const prev=S.breadcrumb[S.breadcrumb.length-1];S.breadcrumb.pop();S.currentNode=prev.q;showScreen('session');renderQuestion()}
+  else showScreen('fallback')
+}
+
+// ── LLM DETAIL FLOW ──────────────────────────
+let detailState={questions:[],answers:{},summary:'',intentLabel:''}
+
+async function refineWithLLM(){
+  const i=S.currentIntent
+  if(!i)return
+  const profile=loadProfile()
+  showScreen('detail')
+  document.getElementById('detail-intent-label').textContent=i.label
+  document.getElementById('detail-intent-cat').textContent=CAT_LABELS[i.category]||i.category
+  document.getElementById('detail-intent-chip').style.borderColor=CAT_COLORS[i.category]||'var(--accent)'
+  document.getElementById('detail-loading').style.display='flex'
+  document.getElementById('detail-questions').classList.add('hidden')
+  document.getElementById('detail-summary').classList.add('hidden')
+  document.getElementById('detail-confirm-btns').classList.add('hidden')
+  detailState={questions:[],answers:{},summary:'',intentLabel:i.label}
+  animateLoadingDots()
+
+  const ctx=[]
+  if(profile.diagnosis) ctx.push(`診斷：${profile.diagnosis}`)
+  if(profile.medications&&profile.medications.length) ctx.push(`用藥：${profile.medications.join('、')}`)
+  if(profile.procedures) ctx.push(`近期療程：${profile.procedures}`)
+  if(profile.allergies&&profile.allergies.length) ctx.push(`過敏：${profile.allergies.join('、')}`)
+  if(profile.preferred_staff&&profile.preferred_staff.length) ctx.push(`偏好醫護：${profile.preferred_staff.join('、')}`)
+  if(profile.notes) ctx.push(`備註：${profile.notes}`)
+
+  const prompt=`你是一個輔助溝通系統的 AI 追問助理。
+
+患者透過決策樹表達了意圖：「${i.label}」（類別：${CAT_LABELS[i.category]||i.category}）
+
+患者背景：
+${ctx.length?ctx.join('\n'):'無病史資料'}
+
+任務：設計 2-4 個 yes/no 追問問題，讓輔助者快速確認更精確的細節。
+
+規則：
+- 每題必須是 yes/no，患者只需眨眼或點頭
+- 利用病史中的具體資訊（藥名、手術名稱、醫護姓名等），而不是泛泛詢問
+- 疼痛類：問位置、程度（「很嚴重嗎？」）
+- 療程類：直接問具體藥名或操作名稱（從用藥清單取）
+- 情緒類：問原因方向（療程相關？家人相關？）
+- 身體類：問位置或性質
+
+只回傳 JSON，不要其他文字：
+{"questions":[{"id":"q1","text":"問題","yes_label":"是的情況","no_label":"否的情況"},{"id":"q2","text":"問題","yes_label":"...","no_label":"..."}]}`
+
+  try{
+    const res=await fetch(API_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,messages:[{role:'user',content:prompt}]})})
+    const data=await res.json()
+    const text=data.content.map(b=>b.text||'').join('')
+    const parsed=JSON.parse(text.replace(/```json|```/g,'').trim())
+    detailState.questions=parsed.questions||[]
+    document.getElementById('detail-loading').style.display='none'
+    renderDetailQuestions()
+  }catch(err){
+    document.getElementById('detail-loading').innerHTML=`<div style="color:var(--red);font-size:15px;text-align:center;padding:12px">AI 無法連線（${err.message}）<br><br><button onclick="confirmYes()" style="background:var(--surface2);color:var(--text);font-size:16px;padding:12px 20px;border:1px solid var(--border);border-radius:10px">直接確認原始意圖</button></div>`
+  }
+}
+
+function animateLoadingDots(){
+  const el=document.getElementById('detail-loading-dots')
+  if(!el)return
+  const frames=['・・・','●・・','・●・','・・●']
+  let f=0
+  const iv=setInterval(()=>{
+    const ldg=document.getElementById('detail-loading')
+    if(!ldg||ldg.style.display==='none'){clearInterval(iv);return}
+    el.textContent=frames[f++%frames.length]
+  },400)
+}
+
+function renderDetailQuestions(){
+  const container=document.getElementById('detail-questions')
+  container.classList.remove('hidden')
+  container.innerHTML=''
+  detailState.questions.forEach(q=>{
+    const ans=detailState.answers[q.id]
+    const div=document.createElement('div')
+    div.id=`dq-${q.id}`
+    div.style.cssText=`background:var(--surface);border:2px solid ${ans!==undefined?(ans?'var(--green)':'var(--accent)'):'var(--border)'};border-radius:14px;padding:20px 18px;display:flex;flex-direction:column;gap:12px;transition:border-color .15s`
+    div.innerHTML=`
+      <div style="font-size:20px;font-weight:700;line-height:1.3">${q.text}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <button onclick="answerDetail('${q.id}',true)" style="background:${ans===true?'var(--green)':'var(--surface2)'};color:${ans===true?'#000':'var(--text)'};font-size:22px;padding:18px 0;border-radius:12px;border:2px solid ${ans===true?'var(--green)':'var(--border)'}">✓ 是</button>
+        <button onclick="answerDetail('${q.id}',false)" style="background:${ans===false?'var(--surface2)':'var(--surface2)'};color:var(--text);font-size:22px;padding:18px 0;border-radius:12px;border:2px solid ${ans===false?'var(--accent)':'var(--border)'}">✗ 不是</button>
+      </div>
+      ${ans!==undefined?`<div style="font-size:14px;color:var(--muted);padding:4px 0">${ans?q.yes_label:q.no_label}</div>`:''}`
+    container.appendChild(div)
+  })
+  const allDone=detailState.questions.length>0&&detailState.questions.every(q=>detailState.answers[q.id]!==undefined)
+  if(allDone&&!detailState.summary) generateSummary()
+}
+
+function answerDetail(qid,val){
+  detailState.answers[qid]=val
+  renderDetailQuestions()
+}
+
+async function generateSummary(){
+  const i=S.currentIntent
+  const answered=detailState.questions.map(q=>`${q.text} → ${detailState.answers[q.id]?q.yes_label:q.no_label}`).join('\n')
+  const prompt=`根據以下資訊，用一句繁體中文寫出患者完整的需求描述句給輔助者朗讀確認。
+
+原始意圖：${i.label}
+追問結果：
+${answered}
+
+要求：
+- 格式為「你現在…，對嗎？」
+- 句子要具體、包含追問細節
+- 不超過 35 字
+- 只回傳這一句話`
+
+  try{
+    const res=await fetch(API_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:200,messages:[{role:'user',content:prompt}]})})
+    const data=await res.json()
+    detailState.summary=data.content.map(b=>b.text||'').join('').trim()
+  }catch{
+    detailState.summary=`你現在「${i.label}」，對嗎？`
+  }
+  document.getElementById('detail-summary').classList.remove('hidden')
+  document.getElementById('detail-summary-text').textContent=detailState.summary
+  document.getElementById('detail-confirm-btns').classList.remove('hidden')
+}
+
+function detailConfirmYes(){confirmYes(detailState.summary||detailState.intentLabel)}
+
+function detailConfirmNo(){
+  detailState.answers={}
+  detailState.summary=''
+  document.getElementById('detail-summary').classList.add('hidden')
+  document.getElementById('detail-confirm-btns').classList.add('hidden')
+  renderDetailQuestions()
+}
+
+// ══════════════════════════════════════════════
+// MANUAL
+// ══════════════════════════════════════════════
+function filterManual(cat){
+  S.manualFilter=cat
+  document.querySelectorAll('[id^="tab-"]').forEach(b=>{b.style.background='var(--surface2)';b.style.color='var(--text)';b.style.border='1px solid var(--border)'})
+  const a=document.getElementById(`tab-${cat}`)
+  if(a){a.style.background='var(--accent)';a.style.color='#fff';a.style.border='none'}
+  renderManualList()
+}
+
+function renderManual(filter){
+  S.manualSelected=null
+  document.getElementById('manual-confirm-bar').classList.add('hidden')
+  filterManual(filter||'all')
+}
+
+function renderManualList(){
+  const sorted=getSorted(),filter=S.manualFilter
+  const ai=loadAISuggestion(),boostIds=ai&&ai.boost_intent_ids?new Set(ai.boost_intent_ids):new Set()
+  const list=document.getElementById('manual-list')
+  const renderItems=(items)=>items.map(i=>{
+    const isBoost=boostIds.has(i.id)
+    return`<button id="mb-${i.id}" onclick="manualSelect('${i.id}')" style="background:${i.emergency?'rgba(255,59,48,0.12)':'var(--surface)'};color:var(--text);border:2px solid ${i.emergency?'var(--emergency)':isBoost?'rgba(191,90,242,0.5)':'var(--border)'};border-radius:12px;padding:16px 10px;font-size:19px;text-align:center;font-weight:600;position:relative">
+      ${isBoost?`<span style="position:absolute;top:4px;right:6px;font-size:10px;color:var(--purple)">AI</span>`:''}${i.label}
+    </button>`}).join('')
+
+  if(filter==='all'){
+    const groups={}
+    CAT_ORDER.forEach(c=>groups[c]=sorted.filter(i=>i.category===c))
+    list.innerHTML=CAT_ORDER.map(cat=>{
+      const items=groups[cat]
+      if(!items.length)return''
+      return`<div style="margin-bottom:20px"><div style="font-size:13px;color:${CAT_COLORS[cat]};font-weight:600;margin-bottom:8px">${CAT_LABELS[cat]}</div><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">${renderItems(items)}</div></div>`
+    }).join('')
+  } else {
+    const items=sorted.filter(i=>i.category===filter)
+    if(!items.length){list.innerHTML=`<div style="color:var(--muted);text-align:center;padding:32px 0;font-size:16px">此類別尚無項目</div>`;return}
+    list.innerHTML=`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">${renderItems(items)}</div>`
+  }
+}
+
+function manualSelect(id){
+  const intent=getAllIntents().find(i=>i.id===id)
+  if(!intent)return
+  document.querySelectorAll('[id^="mb-"]').forEach(b=>{
+    const bid=b.id.replace('mb-','')
+    const bi=getAllIntents().find(i=>i.id===bid)
+    const ai=loadAISuggestion(),boostIds=ai&&ai.boost_intent_ids?new Set(ai.boost_intent_ids):new Set()
+    b.style.background=bi&&bi.emergency?'rgba(255,59,48,0.12)':'var(--surface)'
+    b.style.borderColor=bi&&bi.emergency?'var(--emergency)':boostIds.has(bid)?'rgba(191,90,242,0.5)':'var(--border)'
+    b.style.color='var(--text)'
+  })
+  const col=CAT_COLORS[intent.category]||'var(--accent)'
+  const btn=document.getElementById(`mb-${id}`)
+  if(btn){btn.style.background=col;btn.style.borderColor=col;btn.style.color='#fff'}
+  S.manualSelected=intent
+  document.getElementById('manual-selected-label').textContent=intent.label
+  document.getElementById('manual-confirm-bar').classList.remove('hidden')
+}
+
+function manualConfirm(){
+  const i=S.manualSelected
+  if(!i)return
+  recordSuccess(i.id)
+  saveSessionRecord({started_at:new Date().toISOString(),label:i.label,predicted_intent:i.id,confirmed:true,fallback_used:true,questions_asked:0})
+  showScreen('home')
+}
+
+// ══════════════════════════════════════════════
+// FAMILY
+// ══════════════════════════════════════════════
+function renderSettings(){
+  const family=loadFamily()
+  const div=document.getElementById('family-list')
+  if(!family.length){div.innerHTML=`<div style="color:var(--muted);font-size:15px;padding:8px 0">尚未設定家人</div>`;return}
+  div.innerHTML=`<div style="display:flex;flex-direction:column;gap:8px">`+
+    family.map(m=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+      <div><span style="font-size:20px;font-weight:700">${m.name}</span>${m.role?`<span style="font-size:13px;color:var(--muted);margin-left:8px">${m.role}</span>`:''}</div>
+      <button onclick="removeFamilyMember('${m.id}')" style="background:transparent;color:var(--red);font-size:14px;padding:6px 10px;border:1px solid var(--red);border-radius:8px">移除</button>
+    </div>`).join('')+`</div>`
+}
+
+function addFamilyMember(){
+  const ni=document.getElementById('family-name-input'),ri=document.getElementById('family-role-input')
+  const name=ni.value.trim()
+  if(!name)return
+  const family=loadFamily()
+  family.push({id:`fm_${Date.now()}`,name,role:ri.value.trim()})
+  saveFamily(family);ni.value='';ri.value='';renderSettings()
+}
+
+function removeFamilyMember(id){saveFamily(loadFamily().filter(m=>m.id!==id));renderSettings()}
+
+// ══════════════════════════════════════════════
+// HISTORY
+// ══════════════════════════════════════════════
+function renderHistory(){
+  const h=loadHistory()
+  const list=document.getElementById('history-list')
+  if(!h.length){list.innerHTML=`<div style="color:var(--muted);text-align:center;padding:40px 0;font-size:17px">尚無紀錄</div>`;return}
+  list.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px">`+h.map(s=>{
+    let d='—';try{const dt=new Date(s.started_at);d=`${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`}catch{}
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center">
+      <span style="font-size:21px;font-weight:700">${s.label}</span>
+      <span style="font-size:13px;color:${s.confirmed?'var(--green)':'var(--red)'};text-align:right">${s.confirmed?'✓ 確認':'✗ 未確認'}</span>
+      <span style="font-size:13px;color:var(--muted)">${d}</span>
+      <span style="font-size:13px;color:var(--muted);text-align:right">${s.questions_asked}題${s.fallback_used?' · fallback':''}</span>
+    </div>`}).join('')+`</div>`
+}
+
+function clearHistory(){if(confirm('確定清除所有紀錄？')){localStorage.removeItem('sessHistV3');renderHistory()}}
+
+// ══════════════════════════════════════════════
+// HOME
+// ══════════════════════════════════════════════
+
+// ══════════════════════════════════════════════
+// FEEDBACK SYSTEM
+// ══════════════════════════════════════════════
+function loadFeedbacks(){try{return JSON.parse(localStorage.getItem('feedbacksV5')||'[]')}catch{return[]}}
+function saveFeedbacks(f){localStorage.setItem('feedbacksV5',JSON.stringify(f))}
+
+const FB_TYPE_LABELS={
+  missing:'缺少某個需求',wrongcat:'分類位置不對',
+  wronglabel:'措辭需要調整',flow:'流程走錯了',general:'整體使用回饋'
+}
+
+let currentFbType=null
+
+function selectFbType(type){
+  currentFbType=type
+  // highlight button
+  ['missing','wrongcat','wronglabel','flow','general'].forEach(t=>{
+    const b=document.getElementById(`fb-type-${t}`)
+    b.style.background=t===type?'var(--accent)':'var(--surface2)'
+    b.style.color=t===type?'#fff':'var(--text)'
+    b.style.borderColor=t===type?'var(--accent)':'var(--border)'
+  })
+  // show form
+  document.getElementById('fb-form').classList.remove('hidden')
+  document.getElementById('fb-form').style.display='flex'
+  document.getElementById('fb-missing-fields').classList.add('hidden')
+  document.getElementById('fb-wrongcat-fields').classList.add('hidden')
+  document.getElementById('fb-text-fields').classList.add('hidden')
+  const labelMap={missing:'描述缺少的需求',wrongcat:'指出分類問題',wronglabel:'描述措辭問題',flow:'描述流程問題',general:'整體回饋'}
+  document.getElementById('fb-form-label').textContent=labelMap[type]||'說明'
+  if(type==='missing'){document.getElementById('fb-missing-fields').classList.remove('hidden')}
+  else if(type==='wrongcat'){document.getElementById('fb-wrongcat-fields').classList.remove('hidden')}
+  else{document.getElementById('fb-text-fields').classList.remove('hidden')}
+  // populate session select
+  const sel=document.getElementById('fb-session-select')
+  document.getElementById('fb-session-ref').style.display='block'
+  const h=loadHistory().slice(0,10)
+  sel.innerHTML='<option value="">— 不關聯特定紀錄 —</option>'+h.map((s,i)=>{
+    let d='';try{const dt=new Date(s.started_at);d=`${dt.getMonth()+1}/${dt.getDate()} `}catch{}
+    return`<option value="${i}">${d}${s.label}</option>`
+  }).join('')
+}
+
+function submitFeedback(){
+  if(!currentFbType)return
+  const fb={id:`fb_${Date.now()}`,type:currentFbType,created_at:new Date().toISOString()}
+  if(currentFbType==='missing'){
+    const name=document.getElementById('fb-new-intent').value.trim()
+    const cat=document.getElementById('fb-new-cat').value
+    if(!name){alert('請輸入需求名稱');return}
+    fb.intent_name=name
+    fb.suggested_category=cat
+    fb.summary=`新增需求：「${name}」${cat?'（建議放在'+{body:'身體',env:'環境',treatment:'療程',medical:'醫療',social:'社交',emotion:'情緒'}[cat]+'）':''}`
+  } else if(currentFbType==='wrongcat'){
+    const name=document.getElementById('fb-wrongcat-intent').value.trim()
+    const to=document.getElementById('fb-wrongcat-to').value
+    if(!name){alert('請輸入需求名稱');return}
+    fb.intent_name=name
+    fb.suggested_category=to
+    fb.summary=`移動「${name}」到${to?{body:'身體',env:'環境',treatment:'療程',medical:'醫療',social:'社交',emotion:'情緒'}[to]:'其他類別'}`
+  } else {
+    const text=document.getElementById('fb-text-content').value.trim()
+    if(!text){alert('請輸入說明');return}
+    fb.content=text
+    fb.summary=text.slice(0,40)+(text.length>40?'…':'')
+  }
+  const selIdx=document.getElementById('fb-session-select').value
+  if(selIdx!==''){
+    const h=loadHistory()
+    fb.related_session=h[parseInt(selIdx)]||null
+  }
+  const feedbacks=loadFeedbacks()
+  feedbacks.unshift(fb)
+  saveFeedbacks(feedbacks)
+  // reset form
+  currentFbType=null
+  document.getElementById('fb-form').classList.add('hidden')
+  document.getElementById('fb-new-intent').value=''
+  document.getElementById('fb-new-cat').value=''
+  document.getElementById('fb-wrongcat-intent').value=''
+  document.getElementById('fb-wrongcat-to').value=''
+  if(document.getElementById('fb-text-content'))document.getElementById('fb-text-content').value=''
+  ['missing','wrongcat','wronglabel','flow','general'].forEach(t=>{
+    const b=document.getElementById(`fb-type-${t}`)
+    b.style.background='var(--surface2)';b.style.color='var(--text)';b.style.borderColor='var(--border)'
+  })
+  renderFeedbackList()
+}
+
+function renderFeedback(){
+  currentFbType=null
+  document.getElementById('fb-form').classList.add('hidden')
+  renderFeedbackList()
+}
+
+function renderFeedbackList(){
+  const fbs=loadFeedbacks()
+  const list=document.getElementById('feedback-list')
+  if(!fbs.length){list.innerHTML='<div style="color:var(--muted);font-size:15px;padding:16px 0">尚無回報</div>';return}
+  const typeColors={missing:'#30d158',wrongcat:'#ff9f0a',wronglabel:'#32ade6',flow:'#bf5af2',general:'#8e8e93'}
+  list.innerHTML='<div style="display:flex;flex-direction:column;gap:10px">'+fbs.map((fb,i)=>{
+    let d='';try{const dt=new Date(fb.created_at);d=`${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`}catch{}
+    const col=typeColors[fb.type]||'var(--muted)'
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;font-weight:600;color:${col};background:rgba(0,0,0,0.2);padding:2px 8px;border-radius:6px">${FB_TYPE_LABELS[fb.type]||fb.type}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--muted)">${d}</span>
+          <button onclick="deleteFeedback(${i})" style="background:transparent;color:var(--muted);font-size:12px;padding:2px 6px;border:1px solid var(--border);border-radius:6px">刪除</button>
+        </div>
+      </div>
+      <div style="font-size:16px;line-height:1.5">${fb.summary||''}</div>
+      ${fb.related_session?`<div style="font-size:12px;color:var(--muted)">關聯：${fb.related_session.label}</div>`:''}
+    </div>`
+  }).join('')+'</div>'
+}
+
+function deleteFeedback(i){
+  const fbs=loadFeedbacks()
+  fbs.splice(i,1)
+  saveFeedbacks(fbs)
+  renderFeedbackList()
+}
+
+function exportFeedback(){
+  const fbs=loadFeedbacks()
+  const blob=new Blob([JSON.stringify(fbs,null,2)],{type:'application/json'})
+  const a=document.createElement('a')
+  a.href=URL.createObjectURL(blob)
+  a.download=`feedback_${new Date().toISOString().slice(0,10)}.json`
+  a.click()
+}
+
+function renderHome(){
+  const p=loadProfile()
+  document.getElementById('home-patient-name').textContent=p.name||''
+  const ai=loadAISuggestion()
+  const banner=document.getElementById('llm-banner')
+  if(ai&&ai.caregiver_hint){
+    banner.classList.remove('hidden')
+    document.getElementById('llm-banner-text').textContent=ai.caregiver_hint
+    if(ai.risk_note) document.getElementById('llm-banner-text').innerHTML+=`<br><span style="color:var(--orange);font-size:14px">⚠ ${ai.risk_note}</span>`
+  } else {
+    banner.classList.add('hidden')
+  }
+  const h=loadHistory().slice(0,3)
+  const div=document.getElementById('home-recent')
+  if(!h.length){div.innerHTML='';return}
+  div.innerHTML=`<div style="color:var(--muted);font-size:13px;margin-bottom:8px">最近紀錄</div><div style="display:flex;flex-direction:column;gap:8px">`+
+    h.map(s=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:18px">${s.label}</span>
+      <span style="font-size:12px;color:var(--muted)">${s.confirmed?'✓':'✗'} · ${s.questions_asked}題</span>
+    </div>`).join('')+`</div>`
+}
+
+renderHome()
+</script>
+</body>
+</html>
